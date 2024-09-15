@@ -1,7 +1,5 @@
 const Room = require('../models/Room');
-const User = require('../models/User');
 
-// Add this array of words for the game
 const words = ['apple', 'banana', 'car', 'dog', 'elephant', 'flower', 'guitar', 'house', 'island', 'jacket'];
 
 function getRandomWord() {
@@ -9,55 +7,41 @@ function getRandomWord() {
 }
 
 module.exports = (io) => {
-  const connectedClients = new Set();
   const gameStates = new Map();
 
   io.on('connection', (socket) => {
-    if (!connectedClients.has(socket.id)) {
-      connectedClients.add(socket.id);
-      console.log('New client connected:', socket.id);
-    }
-
-    socket.on('joinRoom', async ({ roomCode, userId }) => {
+    socket.on('joinRoom', async ({ roomCode, playerId, username }) => {
       try {
-        const room = await Room.findOne({ code: roomCode }).populate('players', 'username');
+        const room = await Room.findOne({ code: roomCode });
         if (!room) {
           socket.emit('roomError', 'Room not found');
           return;
         }
 
-        const user = await User.findById(userId);
-        if (!user) {
-          socket.emit('roomError', 'User not found');
-          return;
-        }
+        socket.join(roomCode);
 
-        if (room.players.length >= room.numberOfPlayers) {
-          socket.emit('roomError', 'Room is full');
-          return;
-        }
-
-        // Check if the user is already in the room
-        const existingPlayerIndex = room.players.findIndex(player => player._id.toString() === userId);
-        if (existingPlayerIndex === -1) {
-          room.players.push(user);
+        let player = room.players.find(p => p.id === playerId);
+        if (!player) {
+          player = {
+            id: playerId,
+            username: username,
+            role: room.players.length === 0 ? 'admin' : 'participant'
+          };
+          room.players.push(player);
           await room.save();
         }
 
-        socket.join(roomCode);
-
-        const updatedRoom = await Room.findOne({ code: roomCode }).populate('players', 'username');
-        const playerList = updatedRoom.players.map(player => ({
-          id: player._id.toString(),
-          username: player.username
-        }));
-
-        // Emit the updated player list to all clients in the room
-        io.to(roomCode).emit('playerJoined', playerList);
-
-        if (updatedRoom.players.length === updatedRoom.numberOfPlayers) {
-          io.to(roomCode).emit('gameReady');
+        // If this is the first player, they're the admin
+        if (room.players.length === 1) {
+          room.admin = playerId;
+          await room.save();
         }
+
+        // Emit updated player list to all clients in the room
+        io.to(roomCode).emit('playerJoined', room.players);
+
+        // Send room data to the joining player
+        socket.emit('roomData', room);
       } catch (error) {
         console.error('Error joining room:', error);
         socket.emit('roomError', 'Error joining room');
@@ -66,7 +50,7 @@ module.exports = (io) => {
 
     socket.on('startGame', async ({ roomCode }) => {
       try {
-        const room = await Room.findOne({ code: roomCode }).populate('players', 'username');
+        const room = await Room.findOne({ code: roomCode });
         if (!room) {
           socket.emit('roomError', 'Room not found');
           return;
@@ -80,28 +64,58 @@ module.exports = (io) => {
         room.status = 'playing';
         await room.save();
 
-        const gameState = {
-          currentRound: 1,
-          totalRounds: room.numberOfRounds,
-          players: room.players.map(player => ({
-            id: player._id.toString(),
-            username: player.username,
-            score: 0
-          })),
-          currentDrawerIndex: 0,
-          drawingTime: room.drawingTime, // Add this line
-          timeLeft: room.drawingTime,
-          word: getRandomWord()
-        };
-
-        gameStates.set(roomCode, gameState);
-
-        startRound(roomCode);
-
-        io.to(roomCode).emit('gameStarted', gameState);
+        io.to(roomCode).emit('gameStarted');
       } catch (error) {
         console.error('Error starting game:', error);
         socket.emit('roomError', 'Error starting game');
+      }
+    });
+
+    socket.on('joinGame', async ({ roomCode, userId, username }) => {
+      try {
+        const room = await Room.findOne({ code: roomCode });
+        if (!room) {
+          socket.emit('roomError', 'Room not found');
+          return;
+        }
+
+        socket.join(roomCode);
+
+        let gameState = gameStates.get(roomCode);
+        if (!gameState) {
+          gameState = {
+            currentRound: 1,
+            totalRounds: room.numberOfRounds,
+            players: room.players.map(player => ({
+              id: player.id,
+              username: player.username,
+              score: 0,
+              role: player.role
+            })),
+            currentDrawerIndex: Math.floor(Math.random() * room.players.length),
+            drawingTime: room.drawingTime,
+            timeLeft: room.drawingTime,
+            word: getRandomWord(),
+            correctGuesses: 0
+          };
+          gameStates.set(roomCode, gameState);
+        }
+
+        const playerIndex = gameState.players.findIndex(p => p.id === userId);
+        if (playerIndex === -1) {
+          gameState.players.push({ id: userId, username, score: 0, role: 'participant' });
+        }
+
+        io.to(roomCode).emit('gameState', {
+          players: gameState.players,
+          currentDrawer: gameState.players[gameState.currentDrawerIndex].id,
+          timeLeft: gameState.timeLeft
+        });
+
+        socket.emit('wordToDraw', gameState.word);
+      } catch (error) {
+        console.error('Error joining game:', error);
+        socket.emit('roomError', 'Error joining game');
       }
     });
 
@@ -109,59 +123,29 @@ module.exports = (io) => {
       socket.to(roomCode).emit('updateCanvas', { x, y, prevX, prevY });
     });
 
-    socket.on('chat', ({ roomCode, message, userId }) => {
+    socket.on('sendChatMessage', ({ roomCode, message, userId, username }) => {
       const gameState = gameStates.get(roomCode);
       if (!gameState) return;
 
-      const player = gameState.players.find(p => p.id === userId);
-      if (!player) return;
+      io.to(roomCode).emit('chatMessage', { username, message });
 
-      if (gameState.word.toLowerCase() === message.toLowerCase() && userId !== gameState.players[gameState.currentDrawerIndex].id) {
-        // Correct guess
-        player.score += 10; // Add points for correct guess
-        gameState.players[gameState.currentDrawerIndex].score += 5; // Add points for drawer
+      if (gameState.word && message.toLowerCase() === gameState.word.toLowerCase() && userId !== gameState.players[gameState.currentDrawerIndex].id) {
+        const guesser = gameState.players.find(p => p.id === userId);
+        const drawer = gameState.players[gameState.currentDrawerIndex];
+        
+        if (guesser && drawer) {
+          guesser.score += 10;
+          drawer.score += 5;
+          gameState.correctGuesses++;
 
-        io.to(roomCode).emit('correctGuess', { userId, word: gameState.word });
-        io.to(roomCode).emit('updateScores', gameState.players);
+          io.to(roomCode).emit('correctGuess', { username: guesser.username, word: gameState.word });
+          io.to(roomCode).emit('updateScores', gameState.players);
 
-        endRound(roomCode);
-      } else {
-        io.to(roomCode).emit('chat', { username: player.username, text: message });
-      }
-    });
-
-    socket.on('sendChatMessage', ({ roomCode, message, userId, username }) => {
-      const chatMessage = {
-        username,
-        message,
-        timestamp: new Date()
-      };
-      
-      // Broadcast the message to all clients in the room
-      io.to(roomCode).emit('chatMessage', chatMessage);
-
-      // If the game is in progress, check if the message is the correct guess
-      const gameState = gameStates.get(roomCode);
-      if (gameState && gameState.word) {
-        if (message.toLowerCase() === gameState.word.toLowerCase() && userId !== gameState.players[gameState.currentDrawerIndex].id) {
-          // Correct guess
-          const player = gameState.players.find(p => p.id === userId);
-          if (player) {
-            player.score += 10; // Add points for correct guess
-            gameState.players[gameState.currentDrawerIndex].score += 5; // Add points for drawer
-
-            io.to(roomCode).emit('correctGuess', { userId, word: gameState.word });
-            io.to(roomCode).emit('updateScores', gameState.players);
-
+          if (gameState.correctGuesses >= gameState.players.length - 1) {
             endRound(roomCode);
           }
         }
       }
-    });
-
-    socket.on('disconnect', () => {
-      connectedClients.delete(socket.id);
-      console.log('Client disconnected:', socket.id);
     });
   });
 
@@ -169,14 +153,16 @@ module.exports = (io) => {
     const gameState = gameStates.get(roomCode);
     if (!gameState) return;
 
-    gameState.timeLeft = gameState.drawingTime; // Use the drawing time set by the admin
+    gameState.timeLeft = gameState.drawingTime;
     gameState.word = getRandomWord();
+    gameState.correctGuesses = 0;
 
     io.to(roomCode).emit('roundStart', {
       drawer: gameState.players[gameState.currentDrawerIndex],
-      word: gameState.word,
       timeLeft: gameState.timeLeft
     });
+
+    io.to(roomCode).sockets.sockets.get(gameState.players[gameState.currentDrawerIndex].id).emit('wordToDraw', gameState.word);
 
     const timer = setInterval(() => {
       gameState.timeLeft--;
@@ -193,17 +179,21 @@ module.exports = (io) => {
     const gameState = gameStates.get(roomCode);
     if (!gameState) return;
 
+    io.to(roomCode).emit('roundEnd', {
+      word: gameState.word,
+      scores: gameState.players
+    });
+
     gameState.currentDrawerIndex = (gameState.currentDrawerIndex + 1) % gameState.players.length;
-    gameState.currentRound++;
+    
+    if (gameState.currentDrawerIndex === 0) {
+      gameState.currentRound++;
+    }
 
     if (gameState.currentRound > gameState.totalRounds) {
       endGame(roomCode);
     } else {
-      io.to(roomCode).emit('roundEnd', {
-        word: gameState.word,
-        scores: gameState.players
-      });
-      setTimeout(() => startRound(roomCode), 5000); // 5 seconds break between rounds
+      setTimeout(() => startRound(roomCode), 5000);
     }
   }
 

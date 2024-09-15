@@ -16,70 +16,36 @@ function GameRoom() {
 
   useEffect(() => {
     const newSocket = io('http://localhost:3000', {
-      transports: ['websocket'],
-      upgrade: false
+      withCredentials: true,
+      transports: ['websocket']
     });
     setSocket(newSocket);
 
-    return () => newSocket.close();
-  }, []);
+    const playerId = localStorage.getItem('playerId');
+    const username = localStorage.getItem('username');
+    newSocket.emit('joinRoom', { roomCode, playerId, username });
 
-  useEffect(() => {
-    const fetchRoomData = async () => {
-      try {
-        const response = await axios.get(`http://localhost:3000/api/rooms/${roomCode}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        if (response.data.success) {
-          setRoomData(response.data.room);
-          setPlayers(response.data.room.players);
-          const currentUser = JSON.parse(localStorage.getItem('user'));
-          setIsAdmin(currentUser.id === response.data.room.admin);
-        } else {
-          setError('Failed to load room data');
-        }
-      } catch (error) {
-        console.error('Error fetching room data:', error);
-        setError('Failed to load room data');
-      }
-    };
-
-    fetchRoomData();
-  }, [roomCode]);
-
-  useEffect(() => {
-    if (socket == null || roomData == null) return;
-
-    const userId = JSON.parse(localStorage.getItem('user')).id;
-    socket.emit('joinRoom', { roomCode, userId });
-
-    socket.on('playerJoined', (updatedPlayers) => {
+    newSocket.on('playerJoined', (updatedPlayers) => {
       console.log('Updated players:', updatedPlayers);
       setPlayers(updatedPlayers);
     });
 
-    socket.on('gameReady', () => {
-      setGameStatus('ready');
+    newSocket.on('roomData', (room) => {
+      setRoomData(room);
+      const currentPlayerId = localStorage.getItem('playerId');
+      setIsAdmin(currentPlayerId === room.admin);
     });
 
-    socket.on('gameStarted', () => {
-      setGameStatus('playing');
+    newSocket.on('gameStarted', () => {
       navigate(`/game/${roomCode}`);
     });
 
-    socket.on('roomError', (errorMessage) => {
+    newSocket.on('roomError', (errorMessage) => {
       setError(errorMessage);
     });
 
-    return () => {
-      socket.off('playerJoined');
-      socket.off('gameReady');
-      socket.off('gameStarted');
-      socket.off('roomError');
-    };
-  }, [socket, roomData, roomCode, navigate]);
+    return () => newSocket.close();
+  }, [roomCode, navigate]);
 
   const startGame = () => {
     if (socket && isAdmin) {
@@ -105,12 +71,17 @@ function GameRoom() {
       <h3>Players:</h3>
       <ul className="player-list">
         {players.map((player) => (
-          <li key={player.id}>{player.username}</li>
+          <li key={player.id}>
+            {player.username} ({player.role})
+            {player.id === roomData.admin && ' (Admin)'}
+          </li>
         ))}
       </ul>
-      {isAdmin && players.length >= 2 && gameStatus === 'waiting' && (
+      {isAdmin && players.length >= 2 && (
         <button onClick={startGame} className="start-game-button">Start Game</button>
       )}
+      {isAdmin && <p>You are the admin. You can start the game when there are at least 2 players.</p>}
+      {!isAdmin && <p>Waiting for the admin to start the game...</p>}
     </div>
   );
 }

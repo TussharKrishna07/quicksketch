@@ -7,8 +7,7 @@ const RoomSchema = new mongoose.Schema({
     unique: true
   },
   admin: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: String,
     required: true
   },
   numberOfPlayers: {
@@ -28,8 +27,9 @@ const RoomSchema = new mongoose.Schema({
     required: true
   },
   players: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    id: String,
+    username: String,
+    role: String
   }],
   status: {
     type: String,

@@ -10,29 +10,31 @@ const roomRoutes = require('./routes/rooms');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:5173", // or whatever port your frontend is running on
+  methods: ["GET", "POST"],
+  credentials: true
+}));
 app.use(express.json()); // Add this line to parse JSON request bodies
 
-// Middleware to extract user from token
-app.use((req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) return next();
+// Remove the JWT middleware
+// app.use((req, res, next) => { ... });
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    console.error('Token verification error:', error);
-    next();
+// Instead, add this middleware to extract the role from headers
+app.use((req, res, next) => {
+  const role = req.header('Role');
+  if (role) {
+    req.userRole = role;
   }
+  next();
 });
 
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:5173", // Assuming your frontend runs on this port
-    methods: ["GET", "POST"]
+    origin: "http://localhost:5173", // or whatever port your frontend is running on
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 

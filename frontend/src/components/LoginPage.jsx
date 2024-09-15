@@ -22,6 +22,8 @@ function LoginPage() {
       if (response.data.success) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
         localStorage.setItem('token', response.data.token);
+        localStorage.setItem('username', username); // Ensure username is stored
+        console.log('Username stored in localStorage:', username); // Add this log
         navigate(from.pathname);
       }
     } catch (error) {

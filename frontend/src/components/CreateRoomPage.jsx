@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './CreateRoomPage.css';
@@ -13,6 +13,13 @@ function CreateRoomPage() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const storedUsername = localStorage.getItem('username');
+    if (!storedUsername) {
+      navigate('/login', { state: { from: { pathname: '/create-room' }, role: 'admin' } });
+    }
+  }, [navigate]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setRoomSettings(prevSettings => ({
@@ -25,19 +32,27 @@ function CreateRoomPage() {
     e.preventDefault();
     setError('');
     try {
-      const token = localStorage.getItem('token');
-      console.log('Token:', token); // Add this line
-      console.log('Room settings:', roomSettings); // Add this line
-      const response = await axios.post('http://localhost:3000/api/rooms/create', roomSettings, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const username = localStorage.getItem('username');
+      if (!username) {
+        setError('Username not found. Please log in again.');
+        return;
+      }
+      const response = await axios.post('http://localhost:3000/api/rooms/create', 
+        { ...roomSettings, username },
+        {
+          headers: {
+            'Role': 'admin'
+          }
         }
-      });
+      );
       
-      console.log('Response:', response.data); // Add this line
+      console.log('Response:', response.data);
       
       if (response.data.success) {
+        localStorage.setItem('playerId', response.data.playerId);
         navigate(`/game-room/${response.data.roomCode}`);
+      } else {
+        setError(response.data.message || 'An error occurred while creating the room');
       }
     } catch (error) {
       console.error('Room creation error:', error.response?.data || error.message);

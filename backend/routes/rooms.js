@@ -1,6 +1,7 @@
 const express = require('express');
 const Room = require('../models/Room');
 const router = express.Router();
+const { v4: uuidv4 } = require('uuid');
 
 function generateRoomCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -8,38 +9,59 @@ function generateRoomCode() {
 
 router.post('/create', async (req, res) => {
   try {
-    const { numberOfPlayers, language, numberOfRounds, drawingTime } = req.body;
-    console.log('Received room creation request:', req.body);
+    const { numberOfPlayers, language, numberOfRounds, drawingTime, username } = req.body;
+    const role = req.userRole;
 
-    if (!req.user || !req.user.id) {
-      console.error('User not authenticated');
-      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    if (role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only admins can create rooms' });
     }
 
-    const admin = req.user.id;
-
-    const roomCode = generateRoomCode();
-    const room = new Room({
+    const roomCode = uuidv4().substring(0, 6).toUpperCase();
+    const playerId = uuidv4();
+    const newRoom = new Room({
       code: roomCode,
-      admin,
+      admin: playerId,
       numberOfPlayers,
       language,
       numberOfRounds,
       drawingTime,
-      players: [] // Initialize with an empty array
+      players: [{ id: playerId, username, role: 'admin' }]
     });
 
-    console.log('Room object before saving:', room);
+    await newRoom.save();
 
-    await room.save();
-
-    console.log('Room created successfully:', room);
-    res.status(201).json({ success: true, roomCode });
+    res.json({ success: true, roomCode, playerId });
   } catch (error) {
     console.error('Room creation error:', error);
-    res.status(500).json({ success: false, message: 'Error creating room', error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: 'Error creating room' });
   }
 });
+
+router.post('/join', async (req, res) => {
+    try {
+      const { roomCode, username } = req.body;
+      const role = req.userRole;
+  
+      const room = await Room.findOne({ code: roomCode });
+  
+      if (!room) {
+        return res.status(404).json({ success: false, message: 'Room not found' });
+      }
+  
+      if (room.players.length >= room.numberOfPlayers) {
+        return res.status(400).json({ success: false, message: 'Room is full' });
+      }
+  
+      const playerId = uuidv4();
+      room.players.push({ id: playerId, username, role });
+      await room.save();
+  
+      res.json({ success: true, roomCode, playerId });
+    } catch (error) {
+      console.error('Room join error:', error);
+      res.status(500).json({ success: false, message: 'Error joining room' });
+    }
+  });
 
 // Add this new route
 router.get('/:roomCode', async (req, res) => {

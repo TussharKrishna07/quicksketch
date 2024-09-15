@@ -13,22 +13,33 @@ function Game() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [timeLeft, setTimeLeft] = useState(0);
+  const [currentRound, setCurrentRound] = useState(1);
+  const [totalRounds, setTotalRounds] = useState(3);
+  const [gameEnded, setGameEnded] = useState(false);
+  const [winner, setWinner] = useState(null);
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const chatContainerRef = useRef(null);
 
   useEffect(() => {
-    const newSocket = io('http://localhost:3000');
+    const newSocket = io('http://localhost:3000', {
+      withCredentials: true,
+      transports: ['websocket']
+    });
     setSocket(newSocket);
 
-    newSocket.emit('joinGame', { roomCode, userId: JSON.parse(localStorage.getItem('user')).id });
+    const user = JSON.parse(localStorage.getItem('user'));
+    newSocket.emit('joinGame', { roomCode, userId: user.id, username: user.username });
 
-    newSocket.on('gameState', ({ players, currentDrawer, wordToDraw, guessWord, timeLeft }) => {
+    newSocket.on('gameState', ({ players, currentDrawer, timeLeft }) => {
       setPlayers(players);
       setCurrentDrawer(currentDrawer);
-      setWordToDraw(wordToDraw);
-      setGuessWord(guessWord);
       setTimeLeft(timeLeft);
+    });
+
+    newSocket.on('wordToDraw', (word) => {
+      setWordToDraw(word);
+      setGuessWord('_'.repeat(word.length));
     });
 
     newSocket.on('updateCanvas', (data) => {
@@ -39,20 +50,30 @@ function Game() {
       setChatMessages(prev => [...prev, message]);
     });
 
+    newSocket.on('correctGuess', ({ username, word }) => {
+      setChatMessages(prev => [...prev, { username: 'System', message: `${username} guessed the word: ${word}!` }]);
+    });
+
     newSocket.on('updateTimer', (time) => {
       setTimeLeft(time);
     });
 
-    newSocket.on('roundStart', ({ drawer, word, timeLeft }) => {
-      setCurrentDrawer(drawer);
-      setWordToDraw(word);
-      setGuessWord('_'.repeat(word.length));
+    newSocket.on('roundStart', ({ drawer, timeLeft }) => {
+      setCurrentDrawer(drawer.id);
       setTimeLeft(timeLeft);
       clearCanvas();
     });
 
-    newSocket.on('updateScores', (updatedPlayers) => {
-      setPlayers(updatedPlayers);
+    newSocket.on('roundEnd', ({ word, scores }) => {
+      setChatMessages(prev => [...prev, { username: 'System', message: `Round ended. The word was: ${word}` }]);
+      setPlayers(scores);
+      setCurrentRound(prev => prev + 1);
+    });
+
+    newSocket.on('gameEnd', ({ winner, finalScores }) => {
+      setWinner(winner);
+      setPlayers(finalScores);
+      setGameEnded(true);
     });
 
     return () => newSocket.close();
@@ -81,11 +102,9 @@ function Game() {
 
   const startDrawing = (event) => {
     const userId = JSON.parse(localStorage.getItem('user')).id;
-    console.log('Start drawing', { currentDrawer, userId });
     if (currentDrawer !== userId) return;
     setIsDrawing(true);
     const { offsetX, offsetY } = event.nativeEvent;
-    console.log('Drawing started at', { offsetX, offsetY });
     socket.emit('draw', { roomCode, x: offsetX, y: offsetY, prevX: offsetX, prevY: offsetY });
   };
 
@@ -98,7 +117,6 @@ function Game() {
     if (!isDrawing || currentDrawer !== userId) return;
     const canvas = canvasRef.current;
     const { offsetX, offsetY } = event.nativeEvent;
-    console.log('Drawing at', { offsetX, offsetY });
     socket.emit('draw', { roomCode, x: offsetX, y: offsetY, prevX: event.prevX, prevY: event.prevY });
     drawLine(event.prevX, event.prevY, offsetX, offsetY);
     event.prevX = offsetX;
@@ -136,20 +154,26 @@ function Game() {
           onMouseOut={stopDrawing}
           onMouseMove={draw}
         />
-        {currentDrawer === JSON.parse(localStorage.getItem('user')).id && (
+        {currentDrawer === JSON.parse(localStorage.getItem('user')).id ? (
           <div className="word-to-draw">Word to draw: {wordToDraw}</div>
-        )}
-        {currentDrawer !== JSON.parse(localStorage.getItem('user')).id && (
+        ) : (
           <div className="guess-word">Word: {guessWord}</div>
         )}
         <div className="timer">Time left: {timeLeft} seconds</div>
+        <div className="round-info">Round {currentRound} of {totalRounds}</div>
+        <div className="current-drawer">
+          Current Drawer: {players.find(p => p.id === currentDrawer)?.username || 'Unknown'}
+        </div>
       </div>
       <div className="sidebar">
         <div className="leaderboard">
           <h3>Leaderboard</h3>
           <ul>
             {players.sort((a, b) => b.score - a.score).map(player => (
-              <li key={player.id}>{player.username}: {player.score}</li>
+              <li key={player.id}>
+                {player.username}: {player.score}
+                {player.id === currentDrawer && ' (Drawing)'}
+              </li>
             ))}
           </ul>
         </div>
@@ -168,13 +192,20 @@ function Game() {
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Type your message..."
+              placeholder="Type your guess..."
               className="chat-input"
             />
             <button type="submit" className="chat-send-button">Send</button>
           </form>
         </div>
       </div>
+      {gameEnded && (
+        <div className="game-end-overlay">
+          <h2>Game Over!</h2>
+          <p>Winner: {winner.username} with {winner.score} points!</p>
+          <button onClick={() => window.location.href = '/'}>Back to Lobby</button>
+        </div>
+      )}
     </div>
   );
 }
