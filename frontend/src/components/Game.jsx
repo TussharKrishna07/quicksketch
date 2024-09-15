@@ -19,7 +19,10 @@ function Game() {
   const [winner, setWinner] = useState(null);
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [lastX, setLastX] = useState(0);
+  const [lastY, setLastY] = useState(0);
   const chatContainerRef = useRef(null);
+  const intervalRef = useRef(null);  // Add this line
 
   useEffect(() => {
     const newSocket = io('http://localhost:3000', {
@@ -39,7 +42,7 @@ function Game() {
 
     newSocket.on('wordToDraw', (word) => {
       setWordToDraw(word);
-      setGuessWord('_'.repeat(word.length));
+      setGuessWord('_ '.repeat(word.length));
     });
 
     newSocket.on('updateCanvas', (data) => {
@@ -76,7 +79,17 @@ function Game() {
       setGameEnded(true);
     });
 
-    return () => newSocket.close();
+    // Modify this part
+    intervalRef.current = setInterval(() => {
+      clearCanvas();
+    }, 60000);
+
+    return () => {
+      newSocket.close();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, [roomCode]);
 
   useEffect(() => {
@@ -101,11 +114,13 @@ function Game() {
   };
 
   const startDrawing = (event) => {
-    const userId = JSON.parse(localStorage.getItem('user')).id;
-    if (currentDrawer !== userId) return;
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (currentDrawer !== user.id) return;
     setIsDrawing(true);
-    const { offsetX, offsetY } = event.nativeEvent;
-    socket.emit('draw', { roomCode, x: offsetX, y: offsetY, prevX: offsetX, prevY: offsetY });
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    setLastX(event.clientX - rect.left);
+    setLastY(event.clientY - rect.top);
   };
 
   const stopDrawing = () => {
@@ -113,14 +128,24 @@ function Game() {
   };
 
   const draw = (event) => {
-    const userId = JSON.parse(localStorage.getItem('user')).id;
-    if (!isDrawing || currentDrawer !== userId) return;
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!isDrawing || currentDrawer !== user.id) return;
     const canvas = canvasRef.current;
-    const { offsetX, offsetY } = event.nativeEvent;
-    socket.emit('draw', { roomCode, x: offsetX, y: offsetY, prevX: event.prevX, prevY: event.prevY });
-    drawLine(event.prevX, event.prevY, offsetX, offsetY);
-    event.prevX = offsetX;
-    event.prevY = offsetY;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    setLastX(x);
+    setLastY(y);
+
+    // Emit drawing data to server
+    socket.emit('draw', { roomCode, x, y, prevX: lastX, prevY: lastY });
   };
 
   const drawLine = (prevX, prevY, x, y) => {
@@ -137,7 +162,12 @@ function Game() {
     e.preventDefault();
     if (chatInput.trim()) {
       const user = JSON.parse(localStorage.getItem('user'));
-      socket.emit('sendChatMessage', { roomCode, message: chatInput, userId: user.id, username: user.username });
+      socket.emit('sendChatMessage', { 
+        roomCode, 
+        message: chatInput, 
+        userId: user.id, 
+        username: user.username 
+      });
       setChatInput('');
     }
   };
@@ -150,9 +180,10 @@ function Game() {
           width={800}
           height={600}
           onMouseDown={startDrawing}
+          onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseOut={stopDrawing}
-          onMouseMove={draw}
+          style={{ cursor: currentDrawer === JSON.parse(localStorage.getItem('user')).id ? 'crosshair' : 'default' }}
         />
         {currentDrawer === JSON.parse(localStorage.getItem('user')).id ? (
           <div className="word-to-draw">Word to draw: {wordToDraw}</div>

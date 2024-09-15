@@ -16,7 +16,7 @@ module.exports = (io) => {
         if (!room) {
           socket.emit('roomError', 'Room not found');
           return;
-        }
+        } ``
 
         socket.join(roomCode);
 
@@ -72,50 +72,53 @@ module.exports = (io) => {
     });
 
     socket.on('joinGame', async ({ roomCode, userId, username }) => {
+      console.log('joinGame', roomCode, userId, username);
       try {
-        const room = await Room.findOne({ code: roomCode });
-        if (!room) {
-          socket.emit('roomError', 'Room not found');
-          return;
-        }
-
-        socket.join(roomCode);
-
         let gameState = gameStates.get(roomCode);
         if (!gameState) {
           gameState = {
-            currentRound: 1,
-            totalRounds: room.numberOfRounds,
-            players: room.players.map(player => ({
-              id: player.id,
-              username: player.username,
-              score: 0,
-              role: player.role
-            })),
-            currentDrawerIndex: Math.floor(Math.random() * room.players.length),
-            drawingTime: room.drawingTime,
-            timeLeft: room.drawingTime,
-            word: getRandomWord(),
-            correctGuesses: 0
+            players: [],
+            currentDrawer: null,
+            // ... (other game state properties)
           };
           gameStates.set(roomCode, gameState);
         }
 
-        const playerIndex = gameState.players.findIndex(p => p.id === userId);
-        if (playerIndex === -1) {
-          gameState.players.push({ id: userId, username, score: 0, role: 'participant' });
+        // Check if player already exists
+        const existingPlayerIndex = gameState.players.findIndex(p => p.id === userId);
+        if (existingPlayerIndex === -1) {
+          // New player
+          gameState.players.push({ id: userId, username, score: 0, socketId: socket.id });
+        } else {
+          // Update existing player
+          gameState.players[existingPlayerIndex].socketId = socket.id;
+          gameState.players[existingPlayerIndex].username = username;
         }
 
+        // Assign drawer if this is the first player
+        if (gameState.players.length === 1) {
+          gameState.currentDrawer = userId;
+        }
+
+        socket.join(roomCode);
+
+        // Emit updated game state to all clients in the room
         io.to(roomCode).emit('gameState', {
           players: gameState.players,
-          currentDrawer: gameState.players[gameState.currentDrawerIndex].id,
-          timeLeft: gameState.timeLeft
+          currentDrawer: gameState.currentDrawer,
+          // ... (other game state properties)
         });
 
-        socket.emit('wordToDraw', gameState.word);
+        // Emit a personal welcome message to the joining player
+        socket.emit('joinGameResponse', { 
+          success: true, 
+          message: 'Joined the game successfully',
+          playerId: userId
+        });
+
       } catch (error) {
         console.error('Error joining game:', error);
-        socket.emit('roomError', 'Error joining game');
+        socket.emit('joinGameResponse', { success: false, message: 'Error joining game' });
       }
     });
 
@@ -127,26 +130,71 @@ module.exports = (io) => {
       const gameState = gameStates.get(roomCode);
       if (!gameState) return;
 
+      // Emit the chat message to all clients in the room
       io.to(roomCode).emit('chatMessage', { username, message });
 
       if (gameState.word && message.toLowerCase() === gameState.word.toLowerCase() && userId !== gameState.players[gameState.currentDrawerIndex].id) {
-        const guesser = gameState.players.find(p => p.id === userId);
-        const drawer = gameState.players[gameState.currentDrawerIndex];
-        
-        if (guesser && drawer) {
-          guesser.score += 10;
-          drawer.score += 5;
-          gameState.correctGuesses++;
-
-          io.to(roomCode).emit('correctGuess', { username: guesser.username, word: gameState.word });
-          io.to(roomCode).emit('updateScores', gameState.players);
-
-          if (gameState.correctGuesses >= gameState.players.length - 1) {
-            endRound(roomCode);
-          }
-        }
+        // Correct guess logic
+        // ...
       }
     });
+
+    // Function to update player score
+    function updatePlayerScore(gameState, playerId, scoreToAdd) {
+      const playerIndex = gameState.players.findIndex(p => p.id === playerId);
+      if (playerIndex !== -1) {
+        gameState.players[playerIndex].score += scoreToAdd;
+      }
+    }
+
+    // Function to get updated game state (use this when emitting game state)
+    function getUpdatedGameState(gameState) {
+      return {
+        players: gameState.players,
+        currentDrawer: gameState.currentDrawer,
+        // ... other game state properties
+      };
+    }
+
+    // Example: Handling correct guess
+    socket.on('correctGuess', ({ roomCode, playerId }) => {
+      const gameState = gameStates.get(roomCode);
+      if (gameState) {
+        updatePlayerScore(gameState, playerId, 10); // Add 10 points for correct guess
+        io.to(roomCode).emit('gameState', getUpdatedGameState(gameState));
+      }
+    });
+
+    // Example: Ending a round
+    function endRound(roomCode) {
+      const gameState = gameStates.get(roomCode);
+      if (gameState) {
+        // Update scores, change current drawer, etc.
+        // ...
+
+        // Emit updated game state
+        io.to(roomCode).emit('gameState', getUpdatedGameState(gameState));
+        io.to(roomCode).emit('roundEnd', {
+          word: gameState.word,
+          scores: gameState.players.map(p => ({ id: p.id, score: p.score }))
+        });
+      }
+    }
+
+    // Example: Starting a new game
+    function startNewGame(roomCode) {
+      const gameState = gameStates.get(roomCode);
+      if (gameState) {
+        // Reset scores
+        gameState.players.forEach(p => p.score = 0);
+        
+        // Set new current drawer, reset other game state properties
+        // ...
+
+        // Emit updated game state
+        io.to(roomCode).emit('gameState', getUpdatedGameState(gameState));
+      }
+    }
   });
 
   function startRound(roomCode) {
