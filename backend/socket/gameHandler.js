@@ -1,9 +1,23 @@
 const Room = require('../models/Room');
+const axios = require('axios');
 
 const words = ['apple', 'banana', 'car', 'dog', 'elephant', 'flower', 'guitar', 'house', 'island', 'jacket'];
 
-function getRandomWord() {
-  return words[Math.floor(Math.random() * words.length)];
+// Function to get a random word from the API
+async function getRandomWord() {
+  try {
+    const response = await axios.get('https://random-word-api.herokuapp.com/word');
+    return response.data[0]; // The API returns an array with a single word
+  } catch (error) {
+    console.error('Error fetching random word:', error);
+    return fallbackRandomWord(); // Use a fallback method if the API fails
+  }
+}
+
+// Fallback function in case the API fails
+function fallbackRandomWord() {
+  const fallbackWords = ['apple', 'banana', 'cherry', 'dog', 'elephant', 'frog', 'guitar', 'house', 'island', 'jacket'];
+  return fallbackWords[Math.floor(Math.random() * fallbackWords.length)];
 }
 
 module.exports = (io) => {

@@ -35,7 +35,15 @@ function Game() {
     newSocket.emit('joinGame', { roomCode, userId: user.id, username: user.username });
 
     newSocket.on('gameState', ({ players, currentDrawer, timeLeft }) => {
-      setPlayers(players);
+      setPlayers(prevPlayers => {
+        const uniquePlayers = players.reduce((acc, player) => {
+          if (!acc.some(p => p.id === player.id)) {
+            acc.push(player);
+          }
+          return acc;
+        }, []);
+        return uniquePlayers;
+      });
       setCurrentDrawer(currentDrawer);
       setTimeLeft(timeLeft);
     });
@@ -199,19 +207,24 @@ function Game() {
       <div className="sidebar">
         <div className="leaderboard">
           <h3>Leaderboard</h3>
-          <ul>
-            {players.sort((a, b) => b.score - a.score).map(player => (
-              <li key={player.id}>
-                {player.username}: {player.score}
-                {player.id === currentDrawer && ' (Drawing)'}
-              </li>
-            ))}
+          <ul className="player-list">
+            {Array.from(new Set(players.map(p => p.id)))
+              .map(id => players.find(p => p.id === id))
+              .sort((a, b) => b.score - a.score)
+              .map(player => (
+                <li key={player.id} className={`player-item ${player.id === currentDrawer ? 'current-drawer' : ''}`}>
+                  <span className="player-name">{player.username}</span>
+                  <span className="player-score">{player.score}</span>
+                  {player.id === currentDrawer && <span className="drawer-indicator">(Drawing)</span>}
+                </li>
+              ))
+            }
           </ul>
         </div>
         <div className="chat">
           <h3>Chat</h3>
           <div className="chat-messages" ref={chatContainerRef}>
-            {chatMessages.map((msg, index) => (
+            {chatMessages.map((msg,   index) => (
               <div key={index} className="chat-message">
                 <span className="chat-username">{msg.username}: </span>
                 <span className="chat-text">{msg.message}</span>
