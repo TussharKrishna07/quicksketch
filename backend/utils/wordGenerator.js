@@ -5,3 +5,5 @@ function getRandomWord() {
 }
 
 module.exports = getRandomWord;
+
+// need to add a external api to generate a randow word

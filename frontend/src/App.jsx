@@ -1,67 +1,56 @@
-import React, { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
-import './App.css';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import HomePage from './components/HomePage';
+import PlayPage from './components/PlayPage';
+import JoinRoomPage from './components/JoinRoomPage';
+import CreateRoomPage from './components/CreateRoomPage';
+import LoginPage from './components/LoginPage';
+import GameRoom from './components/GameRoom';
+import Game from './components/Game';
 
-const socket = io('http://localhost:5000'); // Assuming your backend is running on port 5000
+function ProtectedRoute({ children, path }) {
+  const user = JSON.parse(localStorage.getItem('user'));
+  if (!user) {
+    return <Navigate to="/login" state={{ from: { pathname: path } }} replace />;
+  }
+  return children;
+}
 
 function App() {
-  const [connected, setConnected] = useState(false);
-  const [roomId, setRoomId] = useState('');
-  const [username, setUsername] = useState('');
-
-  useEffect(() => {
-    socket.on('connect', () => {
-      setConnected(true);
-      console.log('Connected to server');
-    });
-
-    socket.on('disconnect', () => {
-      setConnected(false);
-      console.log('Disconnected from server');
-    });
-
-    return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-    };
-  }, []);
-
-  const joinRoom = () => {
-    if (roomId && username) {
-      socket.emit('join_room', { roomId, username });
-    }
-  };
-
-  useEffect(() => {
-    socket.on('room_update', (room) => {
-      console.log('Room updated:', room);
-      // Update your UI with the room information
-    });
-
-    return () => {
-      socket.off('room_update');
-    };
-  }, []);
-
   return (
-    <div className="App">
-      <h1>Pictionary Game</h1>
-      {connected ? <p>Connected to server</p> : <p>Disconnected from server</p>}
-      <input
-        type="text"
-        value={roomId}
-        onChange={(e) => setRoomId(e.target.value)}
-        placeholder="Enter Room ID"
-      />
-      <input
-        type="text"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        placeholder="Enter Username"
-      />
-      <button onClick={joinRoom}>Join Room</button>
-      {/* Add your game components here */}
-    </div>
+    <Router>
+      <div className="App">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/play" element={
+            <ProtectedRoute path="/play">
+              <PlayPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/join-room" element={
+            <ProtectedRoute path="/join-room">
+              <JoinRoomPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/create-room" element={
+            <ProtectedRoute path="/create-room">
+              <CreateRoomPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/game-room/:roomCode" element={
+            <ProtectedRoute path="/game-room/:roomCode">
+              <GameRoom />
+            </ProtectedRoute>
+          } />
+          <Route path="/game/:roomCode" element={
+            <ProtectedRoute path="/game/:roomCode">
+              <Game />
+            </ProtectedRoute>
+          } />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 

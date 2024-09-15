@@ -20,19 +20,28 @@ router.post('/register', async (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
-  const user = await User.findOne({ username: req.body.username });
-  if (user == null) {
-    return res.status(400).send('Cannot find user');
-  }
   try {
-    if (await bcrypt.compare(req.body.password, user.password)) {
-      const accessToken = jwt.sign({ username: user.username }, process.env.JWT_SECRET);
-      res.json({ accessToken: accessToken });
-    } else {
-      res.send('Not Allowed');
+    const { username, role } = req.body;
+    console.log('Login attempt:', { username, role });
+
+    let user = await User.findOne({ username });
+
+    if (!user) {
+      user = new User({ username, role });
+      await user.save();
+      console.log('New user created:', user);
+    } else if (user.role !== role) {
+      user.role = role;
+      await user.save();
+      console.log('User role updated:', user);
     }
-  } catch {
-    res.status(500).send();
+
+    const token = jwt.sign({ id: user._id, username: user.username, role: user.role }, process.env.JWT_SECRET);
+
+    res.json({ success: true, user: { id: user._id, username: user.username, role: user.role }, token });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 });
 
