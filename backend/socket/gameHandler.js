@@ -93,7 +93,15 @@ module.exports = (io) => {
           gameState = {
             players: [],
             currentDrawer: null,
-            // ... (other game state properties)
+            currentDrawerIndex: 0,
+            word: '',
+            timeLeft: 60,
+            drawingTime: 60,
+            correctGuesses: 0,
+            currentRound: 1,
+            totalRounds: 3,
+            turnTimer: null,
+            currentWord: '',
           };
           gameStates.set(roomCode, gameState);
         }
@@ -114,14 +122,16 @@ module.exports = (io) => {
           gameState.currentDrawer = userId;
         }
 
-        socket.join(roomCode);
+        await socket.join(roomCode);
 
         // Emit updated game state to all clients in the room
         io.to(roomCode).emit('gameState', {
           players: gameState.players,
           currentDrawer: gameState.currentDrawer,
-          // ... (other game state properties)
+          timeLeft: gameState.timeLeft,
         });
+
+        await startRound(roomCode);
 
         // Emit a personal welcome message to the joining player
         socket.emit('joinGameResponse', { 
@@ -211,12 +221,12 @@ module.exports = (io) => {
     }
   });
 
-  function startRound(roomCode) {
+  async function startRound(roomCode) {
     const gameState = gameStates.get(roomCode);
     if (!gameState) return;
 
     gameState.timeLeft = gameState.drawingTime;
-    gameState.word = getRandomWord();
+    gameState.word = await getRandomWord();  // Assuming getRandomWord is async
     gameState.correctGuesses = 0;
 
     io.to(roomCode).emit('roundStart', {
@@ -224,7 +234,8 @@ module.exports = (io) => {
       timeLeft: gameState.timeLeft
     });
 
-    io.to(roomCode).sockets.sockets.get(gameState.players[gameState.currentDrawerIndex].id).emit('wordToDraw', gameState.word);
+    const currentDrawer = gameState.players[gameState.currentDrawerIndex];
+    io.to(currentDrawer.socketId).emit('wordToDraw', gameState.word);
 
     const timer = setInterval(() => {
       gameState.timeLeft--;

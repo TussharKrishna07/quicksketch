@@ -1,27 +1,53 @@
+#root {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100vw;
+  position: relative;
+  overflow: hidden;
+  background-color: #f0f8ff;
+  background-image: url('C:\Users\tussh\OneDrive\Desktop\quicksketch\frontend\src\assets\7167432ae1c401157ba3733c1fbda3a4.jpg'); /* Updated to use the image from public folder */
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover; /* Reduced from 'cover' to 80% */
+}
+
 .home-page {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  background-color: #f0f0f0;
+  width: 100%;
+  max-width: 1280px;
+  padding: 20px;
+  position: relative;
 }
 
 .content-wrapper {
   text-align: center;
+  width: 100%;
   max-width: 800px;
   padding: 20px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .game-title {
-  font-size: 3rem;
+  font-size: 4rem;
   margin-bottom: 1rem;
-  color: #333;
+  color: #FF4500;
+  text-shadow: 3px 3px #FFD700;
+  animation: wiggle 2s infinite;
 }
 
 .game-description {
   font-size: 1.2rem;
   margin-bottom: 2rem;
-  color: #666;
+  color: #4A4A4A;
 }
 
 .button-container {
@@ -35,17 +61,21 @@
   font-size: 1.1rem;
   text-decoration: none;
   color: white;
-  background-color: #007bff;
+  background-color: #FF6347;
   border: none;
-  border-radius: 5px;
+  border-radius: 25px;
   cursor: pointer;
   transition: background-color 0.3s, transform 0.1s;
   min-width: 120px;
+  font-weight: bold;
+  text-transform: uppercase;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  animation: float 2s infinite;
 }
 
 .game-button:hover {
-  background-color: #0056b3;
-  transform: translateY(-2px);
+  background-color: #FF4500;
+  transform: translateY(-4px) scale(1.05);
 }
 
 @media (max-width: 600px) {
@@ -57,4 +87,38 @@
   .game-button {
     width: 80%;
   }
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+@keyframes wobble {
+  0%, 100% { transform: skew(0deg, 0deg); }
+  25% { transform: skew(5deg, 5deg); }
+  75% { transform: skew(-5deg, -5deg); }
+}
+
+@keyframes wiggle {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(1deg); }
+  75% { transform: rotate(-1deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
 }

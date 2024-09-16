@@ -2,38 +2,49 @@
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
-  background-color: #f0f0f0;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background-color: #FFE4E1;
+  border-radius: 15px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  font-family: 'Comic Sans MS', cursive, sans-serif;
 }
 
 .game-room h2 {
-  color: #333;
+  color: #FF6347;
   margin-bottom: 20px;
+  font-size: 2.5em;
+  text-shadow: 2px 2px #FFA07A;
 }
 
 .game-room p {
-  margin-bottom: 10px;
+  margin-bottom: 15px;
+  font-size: 1.1em;
+  color: #4A4A4A;
 }
 
 .error-message {
-  color: #d32f2f;
+  color: #FF4500;
   font-weight: bold;
   text-align: center;
   margin-top: 20px;
+  font-size: 1.2em;
+  text-shadow: 1px 1px #FFD700;
 }
 
 .start-game-button {
-  padding: 10px 20px;
-  font-size: 1.1rem;
-  background-color: #4CAF50;
+  padding: 12px 24px;
+  font-size: 1.2rem;
+  background-color: #32CD32;
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 25px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: all 0.3s;
+  font-weight: bold;
+  text-transform: uppercase;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .start-game-button:hover {
-  background-color: #45a049;
+  background-color: #228B22;
+  transform: translateY(-2px) scale(1.05);
 }
